@@ -806,8 +806,27 @@ showToast('AI 生成成功');
 return;
 } catch (e) {
 console.error('Parse error:', e);
+// Try to parse as normal markdown if JSON fails
+mindMapData = parseMarkdown(message.content);
+if(mindMapData) {
+renderMindMapDOM();
+saveHistory();
+setLoading(false);
+showToast('AI 生成成功 (文本模式)');
+return;
+}
 showToast('AI 返回格式解析错误');
 setLoading(false);
+return;
+}
+} else if (message.content) {
+// Fallback: parse the text content directly
+mindMapData = parseMarkdown(message.content);
+if(mindMapData) {
+renderMindMapDOM();
+saveHistory();
+setLoading(false);
+showToast('AI 生成成功 (文本模式)');
 return;
 }
 }
@@ -818,8 +837,9 @@ setLoading(false);
 showToast('AI 解析失败，请检查 API Key 或稍后重试');
 }
 
-// Local Markdown Parser
+// Local Markdown Parser - Robust Version
 function parseMarkdown(text) {
+try {
 const lines = text.split('\n').filter(line => line.trim());
 if (lines.length === 0) return null;
 
@@ -828,19 +848,18 @@ const stack = [root];
 let baseDepth = -1; 
 
 const headerRegex = /^(#{1,6})\s+(.+)$/;
-const listRegex = /^(\s*)([-*+]|\d+\.)\s+(.+)$/;
+// Support list with or without space after symbol: "- item" or "-item"
+const listRegex = /^(\s*)([-*+]|\d+\.)\s*(.+)$/;
 
 lines.forEach(line => {
 let depth = 0;
 let textContent = '';
-let isHeader = false;
 
 const headerMatch = line.match(headerRegex);
 if (headerMatch) {
 const level = headerMatch[1].length;
 depth = level - 1; 
 textContent = headerMatch[2].trim();
-isHeader = true;
 baseDepth = depth; 
 } else {
 const listMatch = line.match(listRegex);
@@ -849,6 +868,7 @@ const indent = listMatch[1].replace(/\t/g, '  ').length;
 depth = baseDepth + 1 + Math.floor(indent / 2);
 textContent = listMatch[3].trim();
 } else {
+// Plain text with indent
 const indentMatch = line.match(/^(\s*)(.+)$/);
 if (indentMatch) {
 const indent = indentMatch[1].replace(/\t/g, '  ').length;
@@ -858,6 +878,7 @@ textContent = indentMatch[2].trim();
 }
 }
 
+// Clean markdown bold syntax
 if (textContent.includes('**')) {
 textContent = textContent.replace(/\*\*(.+?)\*\*/g, '$1');
 }
@@ -866,6 +887,7 @@ if (!textContent) return;
 
 const node = { text: textContent, children: [], depth };
 
+// Find correct parent
 while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
 stack.pop();
 }
@@ -875,6 +897,11 @@ stack.push(node);
 });
 
 return root.children[0] || root;
+} catch (e) {
+console.error("Parse Error:", e);
+showToast("解析错误: " + e.message);
+return null;
+}
 }
 
 // Calculate tree stats
@@ -933,8 +960,12 @@ currentY += child.subtreeHeight + 15;
 
 // DOM Rendering
 function renderMindMapDOM(targetId = 'mindMapRoot', svgId = 'linesSvg') {
-if (!mindMapData) return;
+if (!mindMapData) {
+showToast("无法渲染：数据为空");
+return;
+}
 
+try {
 const container = document.getElementById(targetId);
 const svg = document.getElementById(svgId);
 const scheme = colorSchemes[document.getElementById('colorScheme').value];
@@ -1013,6 +1044,8 @@ content.innerHTML = pos.text;
 nodeEl.appendChild(content);
 container.appendChild(nodeEl);
 
+// Safe LaTeX Rendering
+try {
 renderMathInElement(content, {
 delimiters: [
 {left: '$$', right: '$$', display: true},
@@ -1022,6 +1055,9 @@ delimiters: [
 ],
 throwOnError: false
 });
+} catch (e) {
+console.warn("KaTeX rendering error for node:", pos.text, e);
+}
 
 pos.children.forEach(drawNodes);
 }
@@ -1041,6 +1077,10 @@ document.getElementById('downloadSvg').disabled = false;
 
 currentZoom = 1;
 updateZoom();
+} catch (e) {
+console.error("Render Error:", e);
+showToast("渲染过程出错");
+}
 }
 
 function saveHistory() {
@@ -1109,18 +1149,25 @@ aiGenerateMindMap();
 } else {
 // Local Mode
 setLoading(true, '本地解析中...');
+// Use setTimeout to allow UI to update before heavy processing
 setTimeout(() => {
+try {
 mindMapData = parseMarkdown(text);
 if (!mindMapData) {
 showToast('无法解析内容，请检查格式');
-setLoading(false);
 return;
 }
 renderMindMapDOM();
 saveHistory();
-setLoading(false);
 showToast('已生成（本地模式）');
-}, 300);
+} catch(e) {
+console.error(e);
+showToast('解析出错：' + e.message);
+} finally {
+// ENSURE loading is turned off
+setLoading(false);
+}
+}, 50);
 }
 });
 
