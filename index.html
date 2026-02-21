@@ -806,17 +806,16 @@ showToast('AI 生成成功');
 return;
 } catch (e) {
 console.error('Parse error:', e);
+showToast('AI 返回格式解析错误');
+setLoading(false);
+return;
 }
 }
 }
 
-// Fallback to local parser if AI fails or no tool call
-setLoading(true, 'AI 解析失败，切换本地解析...');
-mindMapData = parseMarkdown(text);
-renderMindMapDOM();
-saveHistory();
+// If we reach here, something went wrong with AI
 setLoading(false);
-showToast('已生成（本地模式）');
+showToast('AI 解析失败，请检查 API Key 或稍后重试');
 }
 
 // Local Markdown Parser
@@ -1082,6 +1081,12 @@ initApiStatus();
 updateUIState();
 document.getElementById('settingsModal').classList.add('hidden');
 showToast('API Key 已保存');
+
+// Auto-enable AI checkbox when key is saved
+if(apiKey) {
+document.getElementById('useAiCheckbox').checked = true;
+updateUIState(); // Update UI to show enhance button
+}
 });
 
 document.getElementById('aiEnhanceBtn').addEventListener('click', aiEnhanceContent);
